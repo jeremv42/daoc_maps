@@ -3,6 +3,7 @@ import App from "./views/App.vue";
 import { createVuetify } from "vuetify/dist/vuetify";
 
 import "vuetify/dist/vuetify.css";
+import "@mdi/font/css/materialdesignicons.css";
 
 async function main() {
 	const error = ref<unknown>();
