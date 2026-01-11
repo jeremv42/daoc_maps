@@ -15,6 +15,11 @@ import {
 	Point,
 	LatLngBounds,
 	divIcon,
+	polyline,
+	polygon as leafletPolygon,
+	Polyline,
+	Polygon,
+	Layer,
 } from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { Icon } from "leaflet";
@@ -23,8 +28,24 @@ import iconRetinaUrl from "leaflet/dist/images/marker-icon-2x.png";
 import iconUrl from "leaflet/dist/images/marker-icon.png";
 import shadowUrl from "leaflet/dist/images/marker-shadow.png";
 import { DaocMapInfo, DaocMaps, DaocMiniMaps } from "@/models/DaocMaps";
-import { MapMarker, MarkerTypeColors, MarkerTypeIcons, createMarker, exportMarkersToJson, importMarkersFromJson } from "@/models/MapMarker";
+import {
+	MapMarker,
+	MapLayer,
+	MarkerTypeColors,
+	MarkerTypeIcons,
+	createMarker,
+	exportMarkersToJson,
+	importMarkersFromJson,
+	createDefaultLayer,
+	createLayer,
+	DEFAULT_LAYER_ID,
+	compressForUrl,
+	decompressFromUrl,
+	MarkerType,
+} from "@/models/MapMarker";
 import MarkerEditor from "@/components/MarkerEditor.vue";
+import LayerManager from "@/components/LayerManager.vue";
+import GeometryEditor from "@/components/GeometryEditor.vue";
 
 /* This code is needed to properly load the images in the Leaflet CSS */
 delete (Icon as any).Default.prototype._getIconUrl;
@@ -40,7 +61,7 @@ const props = defineProps<{
 
 let leafletMap: Map;
 let markers: Record<string, any> = {};
-let customMarkerLayers: Record<string, Marker> = {};
+let customMarkerLayers: Record<string, Layer> = {};
 
 const mapId = ref(51);
 const search = ref(props.defaultSearch ?? "");
@@ -49,20 +70,43 @@ const loading = ref(false);
 const selected = ref<any>(undefined);
 const debugPos = ref("");
 
+// Layers
+const layers = ref<MapLayer[]>([createDefaultLayer()]);
+const selectedLayerId = ref<string>(DEFAULT_LAYER_ID);
+
 // Marker editing state
 const customMarkers = ref<MapMarker[]>([]);
 const showMarkerEditor = ref(false);
 const editingMarker = ref<MapMarker | null>(null);
-const addMarkerMode = ref(false);
+const addMarkerMode = ref<"point" | "path" | "polygon" | null>(null);
+
+// Geometry editing state
+const showGeometryEditor = ref(false);
+const editingGeometryMarker = ref<MapMarker | null>(null);
+const tempGeometryPoints = ref<{ x: number; y: number }[]>([]);
+let tempPolylineLayer: Polyline | null = null;
+let tempPolygonLayer: Polygon | null = null;
+
+// Import dialog
+const showImportDialog = ref(false);
+const importToNewLayer = ref(true);
+const importNewLayerName = ref("Imported");
 
 const refMap = ref<HTMLDivElement | null>(null);
 const refPopup = ref<HTMLDivElement | null>(null);
 const fileInputRef = ref<HTMLInputElement | null>(null);
 
-// Computed markers for current map
-const currentMapMarkers = computed(() => 
-	customMarkers.value.filter(m => m.mapId === mapId.value)
+// Computed markers for current map, filtered by visible layers
+const currentMapMarkers = computed(() =>
+	customMarkers.value.filter((m) => {
+		if (m.mapId !== mapId.value) return false;
+		const layer = layers.value.find((l) => l.id === m.layerId);
+		return layer?.visible !== false;
+	})
 );
+
+// Get current selected layer
+const currentLayer = computed(() => layers.value.find((l) => l.id === selectedLayerId.value) ?? layers.value[0]);
 
 function getConLevel(level: number, compareLevel: number) {
 	const constep = Math.max(1, (level + 9) / 10) | 0;
@@ -79,24 +123,42 @@ function clearMarkers() {
 function clearCustomMarkerLayers() {
 	for (const m of Object.values(customMarkerLayers)) m.remove();
 	customMarkerLayers = {};
+	clearTempLayers();
+}
+
+function clearTempLayers() {
+	if (tempPolylineLayer) {
+		tempPolylineLayer.remove();
+		tempPolylineLayer = null;
+	}
+	if (tempPolygonLayer) {
+		tempPolygonLayer.remove();
+		tempPolygonLayer = null;
+	}
+}
+
+function getLayerColor(layerId: string): string {
+	const layer = layers.value.find((l) => l.id === layerId);
+	return layer?.color ?? "#2196F3";
 }
 
 function createMarkerIcon(markerData: MapMarker) {
 	const color = MarkerTypeColors[markerData.type];
+	const layerColor = getLayerColor(markerData.layerId);
 	return divIcon({
-		className: 'custom-marker-icon',
+		className: "custom-marker-icon",
 		html: `<div style="
 			background-color: ${color};
 			width: 24px;
 			height: 24px;
 			border-radius: 50%;
-			border: 2px solid white;
+			border: 3px solid ${layerColor};
 			box-shadow: 0 2px 5px rgba(0,0,0,0.3);
 			display: flex;
 			align-items: center;
 			justify-content: center;
 		">
-			<span class="mdi ${MarkerTypeIcons[markerData.type].replace('mdi-', 'mdi-')}" style="color: white; font-size: 14px;"></span>
+			<span class="mdi ${MarkerTypeIcons[markerData.type]}" style="color: white; font-size: 14px;"></span>
 		</div>`,
 		iconSize: [24, 24],
 		iconAnchor: [12, 12],
@@ -105,90 +167,297 @@ function createMarkerIcon(markerData: MapMarker) {
 
 function renderCustomMarkers() {
 	clearCustomMarkerLayers();
-	
+
 	for (const markerData of currentMapMarkers.value) {
-		const latlng = daocToLatLng({ X: String(markerData.x), Y: String(markerData.y) });
-		const markerLayer = marker(latlng, {
-			icon: createMarkerIcon(markerData),
-			draggable: true,
-		});
+		const layer = layers.value.find((l) => l.id === markerData.layerId);
+		if (!layer?.visible) continue;
 
-		// Click to edit
-		markerLayer.on('click', () => {
-			editingMarker.value = markerData;
-			showMarkerEditor.value = true;
-		});
+		const geom = markerData.geometry;
+		const layerColor = getLayerColor(markerData.layerId);
+		const markerColor = MarkerTypeColors[markerData.type];
 
-		// Drag to move
-		markerLayer.on('dragend', () => {
-			const newLatLng = markerLayer.getLatLng();
-			const newCoords = latLngToDaoc(newLatLng);
-			const idx = customMarkers.value.findIndex(m => m.id === markerData.id);
-			if (idx !== -1) {
-				customMarkers.value[idx] = {
-					...customMarkers.value[idx],
-					x: Math.round(newCoords.X),
-					y: Math.round(newCoords.Y),
-				};
+		if (geom.type === "point") {
+			const latlng = daocToLatLng({ X: String(geom.x), Y: String(geom.y) });
+			const markerLayer = marker(latlng, {
+				icon: createMarkerIcon(markerData),
+				draggable: !layer?.locked,
+			});
+
+			markerLayer.on("click", () => {
+				editingMarker.value = markerData;
+				showMarkerEditor.value = true;
+			});
+
+			markerLayer.on("dragend", () => {
+				const newLatLng = markerLayer.getLatLng();
+				const newCoords = latLngToDaoc(newLatLng);
+				const idx = customMarkers.value.findIndex((m) => m.id === markerData.id);
+				if (idx !== -1 && customMarkers.value[idx].geometry.type === "point") {
+					customMarkers.value[idx] = {
+						...customMarkers.value[idx],
+						geometry: {
+							type: "point",
+							x: Math.round(newCoords.X),
+							y: Math.round(newCoords.Y),
+						},
+					};
+					updateUrlHash();
+				}
+			});
+
+			let tooltipContent = `<strong>${markerData.name}</strong>`;
+			if (markerData.levelMin != null || markerData.levelMax != null) {
+				const levelText =
+					markerData.levelMin === markerData.levelMax
+						? `Level ${markerData.levelMin}`
+						: `Level ${markerData.levelMin ?? "?"}-${markerData.levelMax ?? "?"}`;
+				tooltipContent += `<br><small>${levelText}</small>`;
 			}
-		});
+			markerLayer.bindTooltip(tooltipContent);
 
-		// Tooltip with name and level
-		let tooltipContent = `<strong>${markerData.name}</strong>`;
-		if (markerData.levelMin != null || markerData.levelMax != null) {
-			const levelText = markerData.levelMin === markerData.levelMax
-				? `Level ${markerData.levelMin}`
-				: `Level ${markerData.levelMin ?? '?'}-${markerData.levelMax ?? '?'}`;
-			tooltipContent += `<br><small>${levelText}</small>`;
+			markerLayer.addTo(leafletMap);
+			customMarkerLayers[markerData.id] = markerLayer;
+		} else if (geom.type === "path") {
+			const latlngs = geom.points.map((p) => daocToLatLng({ X: String(p.x), Y: String(p.y) }));
+			const pathLayer = polyline(latlngs, {
+				color: markerColor,
+				weight: 4,
+				opacity: 0.8,
+				dashArray: "10, 5",
+			});
+
+			pathLayer.on("click", () => {
+				editingMarker.value = markerData;
+				showMarkerEditor.value = true;
+			});
+
+			pathLayer.bindTooltip(
+				`<strong>${markerData.name}</strong><br><small>Path: ${geom.points.length} waypoints</small>`
+			);
+			pathLayer.addTo(leafletMap);
+			customMarkerLayers[markerData.id] = pathLayer;
+
+			// Add waypoint markers
+			geom.points.forEach((p, i) => {
+				const wpMarker = circleMarker(daocToLatLng({ X: String(p.x), Y: String(p.y) }), {
+					radius: 6,
+					fillColor: markerColor,
+					color: layerColor,
+					weight: 2,
+					fillOpacity: 0.8,
+				});
+				wpMarker.bindTooltip(`${markerData.name} - Waypoint ${i + 1}`);
+				wpMarker.addTo(leafletMap);
+				customMarkerLayers[`${markerData.id}-wp-${i}`] = wpMarker;
+			});
+		} else if (geom.type === "polygon") {
+			const latlngs = geom.points.map((p) => daocToLatLng({ X: String(p.x), Y: String(p.y) }));
+			const polygonLayer = leafletPolygon(latlngs, {
+				color: layerColor,
+				fillColor: markerColor,
+				fillOpacity: 0.2,
+				weight: 2,
+			});
+
+			polygonLayer.on("click", () => {
+				editingMarker.value = markerData;
+				showMarkerEditor.value = true;
+			});
+
+			polygonLayer.bindTooltip(
+				`<strong>${markerData.name}</strong><br><small>Area: ${geom.points.length} vertices</small>`
+			);
+			polygonLayer.addTo(leafletMap);
+			customMarkerLayers[markerData.id] = polygonLayer;
 		}
-		markerLayer.bindTooltip(tooltipContent);
+	}
+}
 
-		markerLayer.addTo(leafletMap);
-		customMarkerLayers[markerData.id] = markerLayer;
+function updateTempGeometry() {
+	clearTempLayers();
+
+	if (tempGeometryPoints.value.length < 2) return;
+
+	const latlngs = tempGeometryPoints.value.map((p) => daocToLatLng({ X: String(p.x), Y: String(p.y) }));
+
+	if (
+		addMarkerMode.value === "path" ||
+		(showGeometryEditor.value && editingGeometryMarker.value?.geometry.type === "path")
+	) {
+		tempPolylineLayer = polyline(latlngs, {
+			color: "#FF9800",
+			weight: 3,
+			dashArray: "5, 10",
+			opacity: 0.8,
+		});
+		tempPolylineLayer.addTo(leafletMap);
+	} else if (
+		addMarkerMode.value === "polygon" ||
+		(showGeometryEditor.value && editingGeometryMarker.value?.geometry.type === "polygon")
+	) {
+		tempPolygonLayer = leafletPolygon(latlngs, {
+			color: "#FF9800",
+			fillColor: "#FF9800",
+			fillOpacity: 0.1,
+			weight: 2,
+			dashArray: "5, 10",
+		});
+		tempPolygonLayer.addTo(leafletMap);
 	}
 }
 
 function handleMapClick(latlng: LatLng) {
-	if (!addMarkerMode.value) return;
-	
 	const coords = latLngToDaoc(latlng);
+	const point = { x: Math.round(coords.X), y: Math.round(coords.Y) };
+
+	// If editing geometry (path or polygon), add point
+	if (showGeometryEditor.value) {
+		tempGeometryPoints.value = [...tempGeometryPoints.value, point];
+		updateTempGeometry();
+		return;
+	}
+
+	if (!addMarkerMode.value) return;
+
+	if (addMarkerMode.value === "point") {
+		const newMarker = createMarker({
+			x: point.x,
+			y: point.y,
+			mapId: mapId.value,
+			layerId: selectedLayerId.value,
+		});
+
+		editingMarker.value = newMarker;
+		showMarkerEditor.value = true;
+		addMarkerMode.value = null;
+	} else if (addMarkerMode.value === "path" || addMarkerMode.value === "polygon") {
+		tempGeometryPoints.value = [...tempGeometryPoints.value, point];
+		updateTempGeometry();
+
+		// Add visual feedback for the point
+		const tempMarker = circleMarker(latlng, {
+			radius: 6,
+			fillColor: "#FF9800",
+			color: "#fff",
+			weight: 2,
+			fillOpacity: 0.8,
+		});
+		tempMarker.addTo(leafletMap);
+		customMarkerLayers[`temp-${tempGeometryPoints.value.length}`] = tempMarker;
+	}
+}
+
+function finishGeometryCreation() {
+	if (!addMarkerMode.value || addMarkerMode.value === "point") return;
+
+	const minPoints = addMarkerMode.value === "polygon" ? 3 : 2;
+	if (tempGeometryPoints.value.length < minPoints) {
+		alert(`Need at least ${minPoints} points to create a ${addMarkerMode.value}`);
+		return;
+	}
+
+	const defaultType: MarkerType = addMarkerMode.value === "path" ? "stablemaster" : "area";
+
 	const newMarker = createMarker({
-		x: Math.round(coords.X),
-		y: Math.round(coords.Y),
+		geometry: {
+			type: addMarkerMode.value,
+			points: [...tempGeometryPoints.value],
+		},
+		type: defaultType,
 		mapId: mapId.value,
+		layerId: selectedLayerId.value,
 	});
-	
+
 	editingMarker.value = newMarker;
 	showMarkerEditor.value = true;
-	addMarkerMode.value = false;
+	cancelAddMode();
+}
+
+function cancelAddMode() {
+	addMarkerMode.value = null;
+	tempGeometryPoints.value = [];
+	clearTempLayers();
+	// Remove temp point markers
+	Object.keys(customMarkerLayers)
+		.filter((k) => k.startsWith("temp-"))
+		.forEach((k) => {
+			customMarkerLayers[k].remove();
+			delete customMarkerLayers[k];
+		});
 }
 
 function handleSaveMarker(markerData: MapMarker) {
-	const idx = customMarkers.value.findIndex(m => m.id === markerData.id);
+	const idx = customMarkers.value.findIndex((m) => m.id === markerData.id);
 	if (idx !== -1) {
 		customMarkers.value[idx] = markerData;
 	} else {
 		customMarkers.value.push(markerData);
 	}
 	renderCustomMarkers();
+	updateUrlHash();
 }
 
 function handleDeleteMarker(markerId: string) {
-	customMarkers.value = customMarkers.value.filter(m => m.id !== markerId);
+	customMarkers.value = customMarkers.value.filter((m) => m.id !== markerId);
 	renderCustomMarkers();
+	updateUrlHash();
 }
 
-function toggleAddMarkerMode() {
-	addMarkerMode.value = !addMarkerMode.value;
+function handleEditGeometry(markerData: MapMarker) {
+	editingGeometryMarker.value = markerData;
+	if (markerData.geometry.type === "path" || markerData.geometry.type === "polygon") {
+		tempGeometryPoints.value = [...markerData.geometry.points];
+	}
+	showGeometryEditor.value = true;
+	updateTempGeometry();
+}
+
+function handleGeometryUpdate(points: { x: number; y: number }[]) {
+	tempGeometryPoints.value = points;
+	updateTempGeometry();
+}
+
+function handleGeometryClose() {
+	if (editingGeometryMarker.value && tempGeometryPoints.value.length >= 2) {
+		const idx = customMarkers.value.findIndex((m) => m.id === editingGeometryMarker.value!.id);
+		if (idx !== -1) {
+			const geomType = customMarkers.value[idx].geometry.type;
+			if (geomType === "path" || geomType === "polygon") {
+				customMarkers.value[idx] = {
+					...customMarkers.value[idx],
+					geometry: {
+						type: geomType,
+						points: [...tempGeometryPoints.value],
+					},
+				};
+			}
+		}
+	}
+
+	showGeometryEditor.value = false;
+	editingGeometryMarker.value = null;
+	tempGeometryPoints.value = [];
+	clearTempLayers();
+	renderCustomMarkers();
+	updateUrlHash();
+}
+
+function toggleAddMarkerMode(mode: "point" | "path" | "polygon") {
+	if (addMarkerMode.value === mode) {
+		cancelAddMode();
+	} else {
+		cancelAddMode();
+		addMarkerMode.value = mode;
+	}
 }
 
 function saveMarkersToFile() {
-	const json = exportMarkersToJson(customMarkers.value);
-	const blob = new Blob([json], { type: 'application/json' });
+	const json = exportMarkersToJson(customMarkers.value, layers.value);
+	const blob = new Blob([json], { type: "application/json" });
 	const url = URL.createObjectURL(blob);
-	const a = document.createElement('a');
+	const a = document.createElement("a");
 	a.href = url;
-	a.download = `daoc-markers-${new Date().toISOString().split('T')[0]}.json`;
+	a.download = `daoc-markers-${new Date().toISOString().split("T")[0]}.json`;
 	a.click();
 	URL.revokeObjectURL(url);
 }
@@ -206,16 +475,92 @@ function handleFileUpload(event: Event) {
 	reader.onload = (e) => {
 		try {
 			const json = e.target?.result as string;
-			const loadedMarkers = importMarkersFromJson(json);
-			customMarkers.value = loadedMarkers;
-			renderCustomMarkers();
+			pendingImportJson.value = json;
+			showImportDialog.value = true;
 		} catch (err) {
-			console.error('Failed to load markers:', err);
-			alert('Failed to load markers file. Make sure it is a valid JSON file.');
+			console.error("Failed to read file:", err);
+			alert("Failed to read markers file.");
 		}
 	};
 	reader.readAsText(file);
-	input.value = ''; // Reset input
+	input.value = "";
+}
+
+const pendingImportJson = ref<string>("");
+
+function confirmImport() {
+	try {
+		const { markers: loadedMarkers, layers: loadedLayers } = importMarkersFromJson(pendingImportJson.value);
+
+		if (importToNewLayer.value) {
+			// Create a new layer and reassign all markers to it
+			const newLayer = createLayer(importNewLayerName.value);
+			layers.value = [...layers.value, newLayer];
+
+			// Map old layer IDs to the new layer
+			const reassignedMarkers = loadedMarkers.map((m) => ({
+				...m,
+				id: crypto.randomUUID(), // Generate new IDs to avoid conflicts
+				layerId: newLayer.id,
+			}));
+
+			customMarkers.value = [...customMarkers.value, ...reassignedMarkers];
+		} else {
+			// Merge layers (add missing ones)
+			for (const layer of loadedLayers) {
+				if (!layers.value.find((l) => l.id === layer.id)) {
+					layers.value = [...layers.value, layer];
+				}
+			}
+
+			// Add markers with new IDs
+			const reassignedMarkers = loadedMarkers.map((m) => ({
+				...m,
+				id: crypto.randomUUID(),
+			}));
+
+			customMarkers.value = [...customMarkers.value, ...reassignedMarkers];
+		}
+
+		showImportDialog.value = false;
+		pendingImportJson.value = "";
+		renderCustomMarkers();
+		updateUrlHash();
+	} catch (err) {
+		console.error("Failed to import markers:", err);
+		alert("Failed to import markers. Make sure it is a valid JSON file.");
+	}
+}
+
+// URL hash handling
+function updateUrlHash() {
+	if (customMarkers.value.length === 0 && layers.value.length === 1) {
+		history.replaceState(null, "", window.location.pathname);
+		return;
+	}
+
+	const encoded = compressForUrl(customMarkers.value, layers.value);
+	history.replaceState(null, "", `#${encoded}`);
+}
+
+function loadFromUrlHash() {
+	const hash = window.location.hash.slice(1);
+	if (!hash) return;
+
+	try {
+		const { markers: loadedMarkers, layers: loadedLayers } = decompressFromUrl(hash);
+		customMarkers.value = loadedMarkers;
+		layers.value = loadedLayers.length > 0 ? loadedLayers : [createDefaultLayer()];
+	} catch (err) {
+		console.error("Failed to load from URL:", err);
+	}
+}
+
+function copyShareableLink() {
+	updateUrlHash();
+	navigator.clipboard.writeText(window.location.href).then(() => {
+		alert("Link copied to clipboard!");
+	});
 }
 
 async function initMap() {
@@ -304,19 +649,30 @@ async function initMap() {
 }
 
 onMounted(async () => {
+	loadFromUrlHash();
 	await initMap();
-	// ESC key to cancel add marker mode
-	document.addEventListener('keydown', handleKeydown);
+	document.addEventListener("keydown", handleKeydown);
+	window.addEventListener("hashchange", loadFromUrlHash);
 });
 onUnmounted(() => {
 	clearMarkers();
 	clearCustomMarkerLayers();
-	document.removeEventListener('keydown', handleKeydown);
+	document.removeEventListener("keydown", handleKeydown);
+	window.removeEventListener("hashchange", loadFromUrlHash);
 });
 
 function handleKeydown(e: KeyboardEvent) {
-	if (e.key === 'Escape' && addMarkerMode.value) {
-		addMarkerMode.value = false;
+	if (e.key === "Escape") {
+		if (addMarkerMode.value) {
+			cancelAddMode();
+		}
+		if (showGeometryEditor.value) {
+			handleGeometryClose();
+		}
+	}
+	// Enter to finish geometry creation
+	if (e.key === "Enter" && addMarkerMode.value && addMarkerMode.value !== "point") {
+		finishGeometryCreation();
 	}
 }
 
@@ -324,6 +680,14 @@ watch(mapId, () => {
 	initMap();
 });
 watch(currentMapMarkers, renderCustomMarkers, { deep: true });
+watch(
+	layers,
+	() => {
+		renderCustomMarkers();
+		updateUrlHash();
+	},
+	{ deep: true }
+);
 watch(
 	() => props.defaultSearch,
 	() => (search.value = props.defaultSearch != null ? props.defaultSearch : search.value)
@@ -346,39 +710,56 @@ function latLngToDaoc(coord: LatLng) {
 <template>
 	<div>
 		<v-toolbar title="Maps">
-			<v-col sm="4">
-				<v-autocomplete
-					v-model="mapId"
-					:items="Object.values(DaocMaps)"
-					:item-title="(v: DaocMapInfo) => `${v.id} - ${v.name}`"
-					item-value="id"
-					prepend-inner-icon="mdi-map"
-					label="Region"
-					variant="underlined"
-					hide-details
-				/>
-			</v-col>
-			<v-col sm="3">
-				<v-text-field v-model="search" prepend-inner-icon="mdi-magnify" label="Search" hide-details />
-			</v-col>
-			<v-col sm="2">
-				<v-text-field
-					label="Player level"
-					type="number"
-					v-model.number="playerLevel"
-					hide-details
-					variant="underlined"
-				/>
-			</v-col>
-			<v-col sm="3" class="d-flex align-center gap-1">
-				<v-btn
-					:color="addMarkerMode ? 'primary' : undefined"
-					:variant="addMarkerMode ? 'elevated' : 'text'"
-					icon="mdi-map-marker-plus"
-					size="small"
-					@click="toggleAddMarkerMode"
-					:title="addMarkerMode ? 'Click on map to add marker (ESC to cancel)' : 'Add marker'"
-				/>
+			<v-autocomplete
+				v-model="mapId"
+				:items="Object.values(DaocMaps)"
+				:item-title="(v: DaocMapInfo) => `${v.id} - ${v.name}`"
+				item-value="id"
+				prepend-inner-icon="mdi-map"
+				label="Region"
+				hide-details
+				class="mx-1"
+			/>
+
+			<v-text-field v-model="search" prepend-inner-icon="mdi-magnify" label="Search" hide-details class="mx-1" />
+
+			<v-text-field label="Level" type="number" v-model.number="playerLevel" hide-details class="mx-1" />
+
+			<div class="d-flex align-center gap-1 flex-wrap">
+				<!-- Add marker buttons -->
+				<v-btn-toggle :model-value="addMarkerMode" density="compact">
+					<v-btn
+						value="point"
+						size="small"
+						:color="addMarkerMode === 'point' ? 'primary' : undefined"
+						@click="toggleAddMarkerMode('point')"
+						title="Add point marker"
+					>
+						<v-icon icon="mdi-map-marker-plus" />
+					</v-btn>
+					<v-btn
+						value="path"
+						size="small"
+						:color="addMarkerMode === 'path' ? 'warning' : undefined"
+						@click="toggleAddMarkerMode('path')"
+						title="Add path (stablemaster route)"
+					>
+						<v-icon icon="mdi-vector-polyline" />
+					</v-btn>
+					<v-btn
+						value="polygon"
+						size="small"
+						:color="addMarkerMode === 'polygon' ? 'success' : undefined"
+						@click="toggleAddMarkerMode('polygon')"
+						title="Add polygon (area)"
+					>
+						<v-icon icon="mdi-vector-polygon" />
+					</v-btn>
+				</v-btn-toggle>
+
+				<v-divider vertical class="mx-2" />
+
+				<!-- File operations -->
 				<v-btn
 					icon="mdi-content-save"
 					size="small"
@@ -394,35 +775,59 @@ function latLngToDaoc(coord: LatLng) {
 					@click="loadMarkersFromFile"
 					title="Load markers from JSON"
 				/>
+				<v-btn
+					icon="mdi-share-variant"
+					size="small"
+					variant="text"
+					@click="copyShareableLink"
+					title="Copy shareable link"
+					:disabled="customMarkers.length === 0"
+				/>
+
 				<v-chip v-if="currentMapMarkers.length > 0" size="small" color="primary">
 					{{ currentMapMarkers.length }} markers
 				</v-chip>
-			</v-col>
+			</div>
 		</v-toolbar>
 
 		<!-- Hidden file input for loading markers -->
-		<input
-			ref="fileInputRef"
-			type="file"
-			accept=".json"
-			style="display: none"
-			@change="handleFileUpload"
-		/>
+		<input ref="fileInputRef" type="file" accept=".json" style="display: none" @change="handleFileUpload" />
 
-		<!-- Add marker mode banner -->
-		<v-alert
-			v-if="addMarkerMode"
-			type="info"
-			density="compact"
-			closable
-			@click:close="addMarkerMode = false"
-		>
-			<strong>Add Marker Mode:</strong> Click on the map to add a new marker. Press ESC or click the X to cancel.
+		<!-- Add marker mode banners -->
+		<v-alert v-if="addMarkerMode === 'point'" type="info" density="compact" closable @click:close="cancelAddMode">
+			<strong>Add Point Marker:</strong> Click on the map to place a marker.
+		</v-alert>
+		<v-alert v-if="addMarkerMode === 'path'" type="warning" density="compact" closable @click:close="cancelAddMode">
+			<strong>Add Path:</strong> Click to add waypoints. Press <kbd>Enter</kbd> to finish or <kbd>ESC</kbd> to cancel.
+			<span v-if="tempGeometryPoints.length > 0">({{ tempGeometryPoints.length }} points)</span>
+			<v-btn v-if="tempGeometryPoints.length >= 2" size="small" class="ml-2" @click="finishGeometryCreation"
+				>Finish Path</v-btn
+			>
+		</v-alert>
+		<v-alert v-if="addMarkerMode === 'polygon'" type="success" density="compact" closable @click:close="cancelAddMode">
+			<strong>Add Polygon:</strong> Click to add vertices. Press <kbd>Enter</kbd> to finish or <kbd>ESC</kbd> to cancel.
+			<span v-if="tempGeometryPoints.length > 0">({{ tempGeometryPoints.length }} points)</span>
+			<v-btn v-if="tempGeometryPoints.length >= 3" size="small" class="ml-2" @click="finishGeometryCreation"
+				>Finish Polygon</v-btn
+			>
 		</v-alert>
 
 		<v-row>
 			<v-col>
 				<v-progress-linear :active="loading" indeterminate />
+				<div style="position: relative">
+					<!-- Layer Manager Panel -->
+					<LayerManager v-model:layers="layers" v-model:selectedLayerId="selectedLayerId" />
+
+					<!-- Geometry Editor Panel -->
+					<GeometryEditor
+						v-model="showGeometryEditor"
+						:points="tempGeometryPoints"
+						:is-polygon="editingGeometryMarker?.geometry.type === 'polygon'"
+						@update:points="handleGeometryUpdate"
+						@close="handleGeometryClose"
+					/>
+				</div>
 				<div class="map-container">
 					<div ref="refMap" class="map-view" :class="{ 'add-marker-cursor': addMarkerMode }" />
 				</div>
@@ -440,9 +845,36 @@ function latLngToDaoc(coord: LatLng) {
 		<MarkerEditor
 			v-model="showMarkerEditor"
 			:marker="editingMarker"
+			:layers="layers"
 			@save="handleSaveMarker"
 			@delete="handleDeleteMarker"
+			@edit-geometry="handleEditGeometry"
 		/>
+
+		<!-- Import Dialog -->
+		<v-dialog v-model="showImportDialog" max-width="400">
+			<v-card>
+				<v-card-title>Import Markers</v-card-title>
+				<v-card-text>
+					<v-switch v-model="importToNewLayer" label="Import to new layer" color="primary" />
+					<v-text-field
+						v-if="importToNewLayer"
+						v-model="importNewLayerName"
+						label="New layer name"
+						variant="outlined"
+						density="compact"
+					/>
+					<v-alert v-if="!importToNewLayer" type="info" density="compact" variant="tonal">
+						Markers will be added to their original layers. Missing layers will be created.
+					</v-alert>
+				</v-card-text>
+				<v-card-actions>
+					<v-spacer />
+					<v-btn variant="text" @click="showImportDialog = false">Cancel</v-btn>
+					<v-btn color="primary" variant="elevated" @click="confirmImport">Import</v-btn>
+				</v-card-actions>
+			</v-card>
+		</v-dialog>
 	</div>
 </template>
 
@@ -450,6 +882,7 @@ function latLngToDaoc(coord: LatLng) {
 .map-container {
 	position: relative;
 	min-height: calc(100vh - 260px);
+	overflow: hidden;
 }
 
 .map-view {
