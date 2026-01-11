@@ -1,0 +1,23 @@
+{
+	"name": "amtemanager",
+	"version": "1.0.0",
+	"private": true,
+	"scripts": {
+		"dev": "vite",
+		"serve": "vite preview",
+		"build": "vue-tsc --noEmit && vite build"
+	},
+	"dependencies": {
+		"leaflet": "^1.9.4",
+		"vue": "^3.5.26",
+		"vuetify": "^3.11.6"
+	},
+	"devDependencies": {
+		"@types/leaflet": "^1.9.21",
+		"@types/node": "^24.1.0",
+		"@vitejs/plugin-vue": "^6.0.3",
+		"typescript": "^5.9.3",
+		"vite": "^7.3.0",
+		"vue-tsc": "^3.2.2"
+	}
+}
