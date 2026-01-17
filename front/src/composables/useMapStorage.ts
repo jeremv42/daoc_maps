@@ -172,11 +172,13 @@ export function useMapStorage(
 	}
 
 	// Initialize: load from URL hash first, then localStorage
-	function initialize() {
+	// Returns true if markers were loaded
+	function initialize(): boolean {
 		const loadedFromUrl = loadFromUrlHash();
 		if (!loadedFromUrl) {
-			loadFromLocalStorage();
+			return loadFromLocalStorage();
 		}
+		return true;
 	}
 
 	// Auto-save watcher

@@ -26,9 +26,10 @@ const refMap = ref<HTMLDivElement | null>(null);
 const fileInputRef = ref<HTMLInputElement | null>(null);
 
 // Basic state
-const mapId = ref(51);
+const mapId = ref<number>(51);
 const search = ref(props.defaultSearch ?? "");
 const playerLevel = ref(50);
+const showOnlyMapsWithMarkers = ref(false);
 
 // Use composables
 const {
@@ -97,6 +98,26 @@ const currentMapMarkers = computed(() =>
 		return layer?.visible !== false;
 	})
 );
+
+// Computed: maps that have markers
+const mapsWithMarkers = computed(() => {
+	const mapIds = new Set(customMarkers.value.map(m => m.mapId));
+	return mapIds;
+});
+
+// Computed: filtered maps for the dropdown
+const filteredMaps = computed(() => {
+	const allMaps = Object.values(DaocMaps);
+	if (!showOnlyMapsWithMarkers.value) {
+		return allMaps;
+	}
+	return allMaps.filter(m => mapsWithMarkers.value.has(m.id));
+});
+
+// Get marker count for a specific map
+function getMapMarkerCount(mapIdVal: number): number {
+	return customMarkers.value.filter(m => m.mapId === mapIdVal).length;
+}
 
 // Format last saved time
 const lastSavedText = computed(() => {
@@ -330,7 +351,15 @@ function handleKeydown(e: KeyboardEvent) {
 // Lifecycle
 onMounted(async () => {
 	// Initialize storage: load from URL hash first, then localStorage
-	initializeStorage();
+	const hasMarkers = initializeStorage();
+	
+	// If we have markers, default to a map that has markers
+	if (hasMarkers && customMarkers.value.length > 0) {
+		const firstMapWithMarkers = customMarkers.value[0].mapId;
+		if (firstMapWithMarkers && DaocMaps[firstMapWithMarkers]) {
+			mapId.value = firstMapWithMarkers;
+		}
+	}
 	
 	// Setup auto-save
 	const cleanupAutoSave = setupAutoSave();
@@ -371,14 +400,33 @@ watch(
 		<v-toolbar title="Maps">
 			<v-autocomplete
 				v-model="mapId"
-				:items="Object.values(DaocMaps)"
-				:item-title="(v: DaocMapInfo) => `${v.id} - ${v.name}`"
+				:items="filteredMaps"
+				:item-title="(v: DaocMapInfo) => {
+					const count = getMapMarkerCount(v.id);
+					return count > 0 ? `${v.id} - ${v.name} (${count} markers)` : `${v.id} - ${v.name}`;
+				}"
 				item-value="id"
 				prepend-inner-icon="mdi-map"
 				label="Region"
 				hide-details
 				class="mx-1"
-			/>
+			>
+				<template #append-inner>
+					<v-tooltip location="bottom">
+						<template #activator="{ props: tooltipProps }">
+							<v-btn
+								v-bind="tooltipProps"
+								:icon="showOnlyMapsWithMarkers ? 'mdi-filter' : 'mdi-filter-outline'"
+								size="small"
+								variant="text"
+								:color="showOnlyMapsWithMarkers ? 'primary' : undefined"
+								@click.stop="showOnlyMapsWithMarkers = !showOnlyMapsWithMarkers"
+							/>
+						</template>
+						<span>{{ showOnlyMapsWithMarkers ? 'Show all maps' : 'Show only maps with markers' }}</span>
+					</v-tooltip>
+				</template>
+			</v-autocomplete>
 
 			<v-text-field v-model="search" prepend-inner-icon="mdi-magnify" label="Search" hide-details class="mx-1" />
 
