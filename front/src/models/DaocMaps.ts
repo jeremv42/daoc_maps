@@ -499,7 +499,7 @@ export const DaocMaps: Record<string, DaocMapInfo> = {
 		"name": "Atlantis",
 		"tiles": [
 			{
-				src: "/maps/30.jpg",
+				src: "/maps/73.jpg",
 				"bounds": [
 					[
 						-72,
@@ -512,7 +512,7 @@ export const DaocMaps: Record<string, DaocMapInfo> = {
 				]
 			},
 			{
-				src: "/maps/31.jpg",
+				src: "/maps/74.jpg",
 				"bounds": [
 					[
 						-72,
@@ -525,7 +525,7 @@ export const DaocMaps: Record<string, DaocMapInfo> = {
 				]
 			},
 			{
-				src: "/maps/32.jpg",
+				src: "/maps/75.jpg",
 				"bounds": [
 					[
 						-64,
@@ -538,7 +538,7 @@ export const DaocMaps: Record<string, DaocMapInfo> = {
 				]
 			},
 			{
-				src: "/maps/33.jpg",
+				src: "/maps/76.jpg",
 				"bounds": [
 					[
 						-80,
@@ -551,7 +551,7 @@ export const DaocMaps: Record<string, DaocMapInfo> = {
 				]
 			},
 			{
-				src: "/maps/34.jpg",
+				src: "/maps/77.jpg",
 				"bounds": [
 					[
 						-72,
@@ -564,7 +564,7 @@ export const DaocMaps: Record<string, DaocMapInfo> = {
 				]
 			},
 			{
-				src: "/maps/38.jpg",
+				src: "/maps/81.jpg",
 				"bounds": [
 					[
 						-56,
@@ -577,7 +577,7 @@ export const DaocMaps: Record<string, DaocMapInfo> = {
 				]
 			},
 			{
-				src: "/maps/39.jpg",
+				src: "/maps/82.jpg",
 				"bounds": [
 					[
 						-56,
@@ -590,7 +590,7 @@ export const DaocMaps: Record<string, DaocMapInfo> = {
 				]
 			},
 			{
-				src: "/maps/41.jpg",
+				src: "/maps/84.jpg",
 				"bounds": [
 					[
 						-72,
@@ -603,7 +603,7 @@ export const DaocMaps: Record<string, DaocMapInfo> = {
 				]
 			},
 			{
-				src: "/maps/42.jpg",
+				src: "/maps/85.jpg",
 				"bounds": [
 					[
 						-72,
@@ -616,7 +616,7 @@ export const DaocMaps: Record<string, DaocMapInfo> = {
 				]
 			},
 			{
-				src: "/maps/43.jpg",
+				src: "/maps/86.jpg",
 				"bounds": [
 					[
 						-88,
@@ -629,7 +629,7 @@ export const DaocMaps: Record<string, DaocMapInfo> = {
 				]
 			},
 			{
-				src: "/maps/44.jpg",
+				src: "/maps/87.jpg",
 				"bounds": [
 					[
 						-88,
@@ -2136,7 +2136,7 @@ export const DaocMaps: Record<string, DaocMapInfo> = {
 		"name": "Atlantis",
 		"tiles": [
 			{
-				src: "/maps/130.jpg",
+				src: "/maps/73.jpg",
 				"bounds": [
 					[
 						-72,
@@ -2149,7 +2149,7 @@ export const DaocMaps: Record<string, DaocMapInfo> = {
 				]
 			},
 			{
-				src: "/maps/131.jpg",
+				src: "/maps/74.jpg",
 				"bounds": [
 					[
 						-72,
@@ -2162,7 +2162,7 @@ export const DaocMaps: Record<string, DaocMapInfo> = {
 				]
 			},
 			{
-				src: "/maps/132.jpg",
+				src: "/maps/75.jpg",
 				"bounds": [
 					[
 						-64,
@@ -2175,7 +2175,7 @@ export const DaocMaps: Record<string, DaocMapInfo> = {
 				]
 			},
 			{
-				src: "/maps/133.jpg",
+				src: "/maps/76.jpg",
 				"bounds": [
 					[
 						-80,
@@ -2188,7 +2188,7 @@ export const DaocMaps: Record<string, DaocMapInfo> = {
 				]
 			},
 			{
-				src: "/maps/134.jpg",
+				src: "/maps/77.jpg",
 				"bounds": [
 					[
 						-72,
@@ -2201,7 +2201,7 @@ export const DaocMaps: Record<string, DaocMapInfo> = {
 				]
 			},
 			{
-				src: "/maps/138.jpg",
+				src: "/maps/81.jpg",
 				"bounds": [
 					[
 						-56,
@@ -2214,7 +2214,7 @@ export const DaocMaps: Record<string, DaocMapInfo> = {
 				]
 			},
 			{
-				src: "/maps/139.jpg",
+				src: "/maps/82.jpg",
 				"bounds": [
 					[
 						-56,
@@ -2227,7 +2227,7 @@ export const DaocMaps: Record<string, DaocMapInfo> = {
 				]
 			},
 			{
-				src: "/maps/141.jpg",
+				src: "/maps/84.jpg",
 				"bounds": [
 					[
 						-72,
@@ -2240,7 +2240,7 @@ export const DaocMaps: Record<string, DaocMapInfo> = {
 				]
 			},
 			{
-				src: "/maps/142.jpg",
+				src: "/maps/85.jpg",
 				"bounds": [
 					[
 						-72,
@@ -2253,7 +2253,7 @@ export const DaocMaps: Record<string, DaocMapInfo> = {
 				]
 			},
 			{
-				src: "/maps/143.jpg",
+				src: "/maps/86.jpg",
 				"bounds": [
 					[
 						-88,
@@ -2266,7 +2266,7 @@ export const DaocMaps: Record<string, DaocMapInfo> = {
 				]
 			},
 			{
-				src: "/maps/144.jpg",
+				src: "/maps/87.jpg",
 				"bounds": [
 					[
 						-88,
@@ -8552,7 +8552,7 @@ export const DaocMiniMaps: DaocMiniMapInfo[] = [
 		height: 46,
 		zones: [
 			{
-				src: "/maps/30.jpg",
+				src: "/maps/73.jpg",
 				left: 25,
 				top: 105,
 				offsetX: 0,
@@ -8562,7 +8562,7 @@ export const DaocMiniMaps: DaocMiniMapInfo[] = [
 				desc: "Home to Oceanus haven, this is the launching point for explorations into the ruins of Atlantis. Various islands break the oceans surface and many mysteries await beneath the cold waters."
 			},
 			{
-				src: "/maps/31.jpg",
+				src: "/maps/74.jpg",
 				left: 71,
 				top: 105,
 				offsetX: 0,
@@ -8572,7 +8572,7 @@ export const DaocMiniMaps: DaocMiniMapInfo[] = [
 				desc: "The Ocean of Mesothalassa is home to the legendary sea monster Cetus and the ancient Library of Atlantis.  If you venture beneath the waves, beware of the Tritons who have claimed vast areas for their own purposes."
 			},
 			{
-				src: "/maps/32.jpg",
+				src: "/maps/75.jpg",
 				left: 71,
 				top: 59,
 				offsetX: 0,
@@ -8582,7 +8582,7 @@ export const DaocMiniMaps: DaocMiniMapInfo[] = [
 				desc: "The ruins of Sobekite Eternal tower majestically over the waters of Boreal.  Many islands, which contain treasures and challenges for even the bravest of adventurers, dot the crystaline blue of the vast waters."
 			},
 			{
-				src: "/maps/33.jpg",
+				src: "/maps/76.jpg",
 				left: 71,
 				top: 151,
 				offsetX: 0,
@@ -8592,7 +8592,7 @@ export const DaocMiniMaps: DaocMiniMapInfo[] = [
 				desc: "Located in the deep south, the waters of Notos contain many treasures but untold dangers. Wicked harpies, ancient artifacts of power, and Medusa's Temple of Twilight are only some of the wonders to be discovered."
 			},
 			{
-				src: "/maps/34.jpg",
+				src: "/maps/77.jpg",
 				left: 117,
 				top: 105,
 				offsetX: 0,
@@ -8602,7 +8602,7 @@ export const DaocMiniMaps: DaocMiniMapInfo[] = [
 				desc: "The Anatole Ocean reaches to the farthest eastern edge of the Atlantean  empire.  Here you can discover the Haven of  Volcanus, battle living  statues, and dive to an Atlantean shipwreck."
 			},
 			{
-				src: "/maps/38.jpg",
+				src: "/maps/81.jpg",
 				left: 47,
 				top: 13,
 				offsetX: 0,
@@ -8612,7 +8612,7 @@ export const DaocMiniMaps: DaocMiniMapInfo[] = [
 				desc: "The Stygian Delta is a searing ocean of sand.  Scorpions, crocodile, and the evil Setians are only some of the dangers that await you.  Temples and tombs left from the Atlantean legacy are slowly being reclaimed by the shifting sands."
 			},
 			{
-				src: "/maps/39.jpg",
+				src: "/maps/82.jpg",
 				left: 1,
 				top: 13,
 				offsetX: 0,
@@ -8622,7 +8622,7 @@ export const DaocMiniMaps: DaocMiniMapInfo[] = [
 				desc: "Deep into the desert, the Land of Atum holds both wonders and terrors alike.  The colossal Atlantean pyramid that reaches to the sky, the Temple of Storms, and the entrance to the land of the dead - the Halls of Ma'ati, are only few of the adventures that await you."
 			},
 			{
-				src: "/maps/41.jpg",
+				src: "/maps/84.jpg",
 				left: 163,
 				top: 105,
 				offsetX: 0,
@@ -8632,7 +8632,7 @@ export const DaocMiniMaps: DaocMiniMapInfo[] = [
 				desc: "A land of fiery lava flows, violent eruptions, and a blasted landscape, Typhon's Reach is not for the faint of heart.  The hulking Taur have made this land their home and they guard it with fierce intensity."
 			},
 			{
-				src: "/maps/42.jpg",
+				src: "/maps/85.jpg",
 				left: 209,
 				top: 105,
 				offsetX: 0,
@@ -8642,7 +8642,7 @@ export const DaocMiniMaps: DaocMiniMapInfo[] = [
 				desc: "Deep into the charred and blasted land of Volcanus lies the Ashen Isle. Located in the heart of a live volcano, the entry to the Titan Typhon is located here.  The isle is also home to the mighty three headed Chimera."
 			},
 			{
-				src: "/maps/43.jpg",
+				src: "/maps/86.jpg",
 				left: 94,
 				top: 197,
 				offsetX: 0,
@@ -8652,7 +8652,7 @@ export const DaocMiniMaps: DaocMiniMapInfo[] = [
 				desc: "The giant redwoods of the Glen are home to the race of Centaur. Through this dense wood and the foothills of the Aerus mountains, adventurers may discover the ruins of the Atlantean's ancient architecture and encounter the caretakers of this beautiful but deadly land."
 			},
 			{
-				src: "/maps/44.jpg",
+				src: "/maps/87.jpg",
 				left: 140,
 				top: 197,
 				offsetX: 0,
@@ -9186,7 +9186,7 @@ export const DaocMiniMaps: DaocMiniMapInfo[] = [
 		height: 46,
 		zones: [
 			{
-				src: "/maps/130.jpg",
+				src: "/maps/73.jpg",
 				left: 25,
 				top: 105,
 				offsetX: 0,
@@ -9196,7 +9196,7 @@ export const DaocMiniMaps: DaocMiniMapInfo[] = [
 				desc: "Home to Oceanus haven, this is the launching point for explorations into the ruins of Atlantis. Various islands break the oceans surface and many mysteries await beneath the cold waters."
 			},
 			{
-				src: "/maps/131.jpg",
+				src: "/maps/74.jpg",
 				left: 71,
 				top: 105,
 				offsetX: 0,
@@ -9206,7 +9206,7 @@ export const DaocMiniMaps: DaocMiniMapInfo[] = [
 				desc: "The Ocean of Mesothalassa is home to the legendary sea monster Cetus and the ancient Library of Atlantis.  If you venture beneath the waves, beware of the Tritons who have claimed vast areas for their own purposes."
 			},
 			{
-				src: "/maps/132.jpg",
+				src: "/maps/75.jpg",
 				left: 71,
 				top: 59,
 				offsetX: 0,
@@ -9216,7 +9216,7 @@ export const DaocMiniMaps: DaocMiniMapInfo[] = [
 				desc: "The ruins of Sobekite Eternal tower majestically over the waters of Boreal.  Many islands, which contain treasures and challenges for even the bravest of adventurers, dot the crystaline blue of the vast waters."
 			},
 			{
-				src: "/maps/133.jpg",
+				src: "/maps/76.jpg",
 				left: 71,
 				top: 151,
 				offsetX: 0,
@@ -9226,7 +9226,7 @@ export const DaocMiniMaps: DaocMiniMapInfo[] = [
 				desc: "Located in the deep south, the waters of Notos contain many treasures but untold dangers. Wicked harpies, ancient artifacts of power, and Medusa's Temple of Twilight are only some of the wonders to be discovered."
 			},
 			{
-				src: "/maps/134.jpg",
+				src: "/maps/77.jpg",
 				left: 117,
 				top: 105,
 				offsetX: 0,
@@ -9236,7 +9236,7 @@ export const DaocMiniMaps: DaocMiniMapInfo[] = [
 				desc: "The Anatole Ocean reaches to the farthest eastern edge of the Atlantean  empire.  Here you can discover the Haven of  Volcanus, battle living  statues, and dive to an Atlantean shipwreck."
 			},
 			{
-				src: "/maps/138.jpg",
+				src: "/maps/81.jpg",
 				left: 47,
 				top: 13,
 				offsetX: 0,
@@ -9246,7 +9246,7 @@ export const DaocMiniMaps: DaocMiniMapInfo[] = [
 				desc: "The Stygian Delta is a searing ocean of sand.  Scorpions, crocodile, and the evil Setians are only some of the dangers that await you.  Temples and tombs left from the Atlantean legacy are slowly being reclaimed by the shifting sands."
 			},
 			{
-				src: "/maps/139.jpg",
+				src: "/maps/82.jpg",
 				left: 1,
 				top: 13,
 				offsetX: 0,
@@ -9256,7 +9256,7 @@ export const DaocMiniMaps: DaocMiniMapInfo[] = [
 				desc: "Deep into the desert, the Land of Atum holds both wonders and terrors alike.  The colossal Atlantean pyramid that reaches to the sky, the Temple of Storms, and the entrance to the land of the dead - the Halls of Ma'ati, are only few of the adventures that await you."
 			},
 			{
-				src: "/maps/141.jpg",
+				src: "/maps/84.jpg",
 				left: 163,
 				top: 105,
 				offsetX: 0,
@@ -9266,7 +9266,7 @@ export const DaocMiniMaps: DaocMiniMapInfo[] = [
 				desc: "A land of fiery lava flows, violent eruptions, and a blasted landscape, Typhon's Reach is not for the faint of heart.  The hulking Taur have made this land their home and they guard it with fierce intensity."
 			},
 			{
-				src: "/maps/142.jpg",
+				src: "/maps/85.jpg",
 				left: 209,
 				top: 105,
 				offsetX: 0,
@@ -9276,7 +9276,7 @@ export const DaocMiniMaps: DaocMiniMapInfo[] = [
 				desc: "Deep into the charred and blasted land of Volcanus lies the Ashen Isle. Located in the heart of a live volcano, the entry to the Titan Typhon is located here.  The isle is also home to the mighty three headed Chimera."
 			},
 			{
-				src: "/maps/143.jpg",
+				src: "/maps/86.jpg",
 				left: 94,
 				top: 197,
 				offsetX: 0,
@@ -9286,7 +9286,7 @@ export const DaocMiniMaps: DaocMiniMapInfo[] = [
 				desc: "The giant redwoods of the Glen are home to the race of Centaur. Through this dense wood and the foothills of the Aerus mountains, adventurers may discover the ruins of the Atlantean's ancient architecture and encounter the caretakers of this beautiful but deadly land."
 			},
 			{
-				src: "/maps/144.jpg",
+				src: "/maps/87.jpg",
 				left: 140,
 				top: 197,
 				offsetX: 0,
