@@ -305,6 +305,29 @@ export function useLeafletMap(mapContainer: Ref<HTMLDivElement | null>) {
 		clearCustomMarkerLayers();
 	}
 
+	// Zoom to fit all markers
+	function zoomToMarkers(markersData: MapMarker[]) {
+		if (!leafletMap.value || markersData.length === 0) return;
+
+		const points: LatLng[] = [];
+
+		for (const markerData of markersData) {
+			const geom = markerData.geometry;
+			if (geom.type === "point") {
+				points.push(daocToLatLng({ X: String(geom.x), Y: String(geom.y) }));
+			} else if (geom.type === "path" || geom.type === "polygon") {
+				for (const p of geom.points) {
+					points.push(daocToLatLng({ X: String(p.x), Y: String(p.y) }));
+				}
+			}
+		}
+
+		if (points.length === 0) return;
+
+		const bounds = new LatLngBounds(points);
+		leafletMap.value.fitBounds(bounds, { padding: [50, 50], maxZoom: 7 });
+	}
+
 	return {
 		leafletMap,
 		loading,
@@ -318,5 +341,6 @@ export function useLeafletMap(mapContainer: Ref<HTMLDivElement | null>) {
 		renderCustomMarkers,
 		initMap,
 		cleanup,
+		zoomToMarkers,
 	};
 }

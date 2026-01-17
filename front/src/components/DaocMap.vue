@@ -72,6 +72,7 @@ const {
 	renderCustomMarkers,
 	initMap: initLeafletMap,
 	cleanup: cleanupLeafletMap,
+	zoomToMarkers,
 } = useLeafletMap(refMap);
 
 // Marker editing state
@@ -353,8 +354,9 @@ onMounted(async () => {
 	// Initialize storage: load from URL hash first, then localStorage
 	const hasMarkers = initializeStorage();
 	
-	// If we have markers, default to a map that has markers
+	// If we have markers, default to a map that has markers and enable filter
 	if (hasMarkers && customMarkers.value.length > 0) {
+		showOnlyMapsWithMarkers.value = true;
 		const firstMapWithMarkers = customMarkers.value[0].mapId;
 		if (firstMapWithMarkers && DaocMaps[firstMapWithMarkers]) {
 			mapId.value = firstMapWithMarkers;
@@ -365,6 +367,11 @@ onMounted(async () => {
 	const cleanupAutoSave = setupAutoSave();
 	
 	await initMap();
+	
+	// Zoom to markers if we have any on the current map
+	if (hasMarkers && currentMapMarkers.value.length > 0) {
+		zoomToMarkers(currentMapMarkers.value);
+	}
 	
 	document.addEventListener("keydown", handleKeydown);
 });
@@ -633,7 +640,7 @@ watch(
 
 .map-view {
 	height: 100%;
-	min-height: calc(100vh - 260px);
+	min-height: calc(100vh - 64px - 24px);
 	z-index: 1;
 }
 
