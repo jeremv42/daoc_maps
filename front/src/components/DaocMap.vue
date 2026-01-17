@@ -1,81 +1,79 @@
 <script lang="ts" setup>
-import {
-	circleMarker,
-	CRS,
-	imageOverlay,
-	latLng,
-	map as LeafletMap,
-	Map,
-	CircleMarkerOptions,
-	LatLngBoundsLiteral,
-	icon,
-	LatLng,
-	Marker,
-	marker,
-	Point,
-	LatLngBounds,
-	divIcon,
-	polyline,
-	polygon as leafletPolygon,
-	Polyline,
-	Polygon,
-	Layer,
-} from "leaflet";
+import { LatLng, circleMarker, Map } from "leaflet";
 import "leaflet/dist/leaflet.css";
-import { Icon } from "leaflet";
-import { computed, onMounted, onUnmounted, ref, watch } from "vue";
-import iconRetinaUrl from "leaflet/dist/images/marker-icon-2x.png";
-import iconUrl from "leaflet/dist/images/marker-icon.png";
-import shadowUrl from "leaflet/dist/images/marker-shadow.png";
+import { computed, onMounted, onUnmounted, ref, shallowRef, watch } from "vue";
 import { DaocMapInfo, DaocMaps, DaocMiniMaps } from "@/models/DaocMaps";
 import {
 	MapMarker,
-	MapLayer,
-	MarkerTypeColors,
-	MarkerTypeIcons,
 	createMarker,
-	exportMarkersToJson,
-	importMarkersFromJson,
 	createDefaultLayer,
-	createLayer,
 	DEFAULT_LAYER_ID,
-	compressForUrl,
-	decompressFromUrl,
 	MarkerType,
 } from "@/models/MapMarker";
 import MarkerEditor from "@/components/MarkerEditor.vue";
 import LayerManager from "@/components/LayerManager.vue";
 import GeometryEditor from "@/components/GeometryEditor.vue";
-
-/* This code is needed to properly load the images in the Leaflet CSS */
-delete (Icon as any).Default.prototype._getIconUrl;
-Icon.Default.mergeOptions({
-	iconRetinaUrl,
-	iconUrl,
-	shadowUrl,
-});
+import { useMapMarkers } from "@/composables/useMapMarkers";
+import { useMapStorage } from "@/composables/useMapStorage";
+import { useLeafletMap } from "@/composables/useLeafletMap";
 
 const props = defineProps<{
 	defaultSearch?: string;
 }>();
 
-let leafletMap: Map;
-let markers: Record<string, any> = {};
-let customMarkerLayers: Record<string, Layer> = {};
+// Template refs
+const refMap = ref<HTMLDivElement | null>(null);
+const fileInputRef = ref<HTMLInputElement | null>(null);
 
+// Basic state
 const mapId = ref(51);
 const search = ref(props.defaultSearch ?? "");
 const playerLevel = ref(50);
-const loading = ref(false);
-const selected = ref<any>(undefined);
-const debugPos = ref("");
 
-// Layers
-const layers = ref<MapLayer[]>([createDefaultLayer()]);
-const selectedLayerId = ref<string>(DEFAULT_LAYER_ID);
+// Use composables
+const {
+	markers: customMarkers,
+	layers,
+	selectedLayerId,
+	currentLayer,
+	updateMarker,
+	deleteMarker,
+	updateMarkerPosition,
+	updateMarkerGeometry,
+	getLayerColor,
+	isLayerLocked,
+} = useMapMarkers();
+
+const {
+	lastSaved,
+	autoSaveEnabled,
+	loadFromLocalStorage,
+	saveToLocalStorage,
+	clearLocalStorage,
+	loadFromUrlHash,
+	updateUrlHash,
+	copyShareableLink,
+	exportToFile,
+	importFromJson,
+	initialize: initializeStorage,
+	setupAutoSave,
+} = useMapStorage(customMarkers, layers);
+
+const {
+	leafletMap,
+	loading,
+	debugPos,
+	customMarkerLayers,
+	daocToLatLng,
+	latLngToDaoc,
+	clearMarkers,
+	clearCustomMarkerLayers,
+	renderCustomMarkers,
+	initMap: initLeafletMap,
+	cleanup: cleanupLeafletMap,
+} = useLeafletMap(refMap);
 
 // Marker editing state
-const customMarkers = ref<MapMarker[]>([]);
 const showMarkerEditor = ref(false);
 const editingMarker = ref<MapMarker | null>(null);
 const addMarkerMode = ref<"point" | "path" | "polygon" | null>(null);
@@ -84,17 +82,12 @@ const addMarkerMode = ref<"point" | "path" | "polygon" | null>(null);
 const showGeometryEditor = ref(false);
 const editingGeometryMarker = ref<MapMarker | null>(null);
 const tempGeometryPoints = ref<{ x: number; y: number }[]>([]);
-let tempPolylineLayer: Polyline | null = null;
-let tempPolygonLayer: Polygon | null = null;
 
 // Import dialog
 const showImportDialog = ref(false);
 const importToNewLayer = ref(true);
 const importNewLayerName = ref("Imported");
-
-const refMap = ref<HTMLDivElement | null>(null);
-const refPopup = ref<HTMLDivElement | null>(null);
-const fileInputRef = ref<HTMLInputElement | null>(null);
+const pendingImportJson = ref<string>("");
 
 // Computed markers for current map, filtered by visible layers
 const currentMapMarkers = computed(() =>
@@ -105,206 +98,15 @@ const currentMapMarkers = computed(() =>
 	})
 );
 
-// Get current selected layer
-const currentLayer = computed(() => layers.value.find((l) => l.id === selectedLayerId.value) ?? layers.value[0]);
-
-function getConLevel(level: number, compareLevel: number) {
-	const constep = Math.max(1, (level + 9) / 10) | 0;
-	const stepping = 1.0 / constep;
-	const leveldiff = level - compareLevel;
-	return Math.min(3, Math.max(-3, 0 - leveldiff * stepping)) | 0;
-}
-
-function clearMarkers() {
-	for (const m of Object.values(markers)) m.remove();
-	markers = {};
-}
-
-function clearCustomMarkerLayers() {
-	for (const m of Object.values(customMarkerLayers)) m.remove();
-	customMarkerLayers = {};
-	clearTempLayers();
-}
-
-function clearTempLayers() {
-	if (tempPolylineLayer) {
-		tempPolylineLayer.remove();
-		tempPolylineLayer = null;
-	}
-	if (tempPolygonLayer) {
-		tempPolygonLayer.remove();
-		tempPolygonLayer = null;
-	}
-}
-
-function getLayerColor(layerId: string): string {
-	const layer = layers.value.find((l) => l.id === layerId);
-	return layer?.color ?? "#2196F3";
-}
-
-function createMarkerIcon(markerData: MapMarker) {
-	const color = MarkerTypeColors[markerData.type];
-	const layerColor = getLayerColor(markerData.layerId);
-	return divIcon({
-		className: "custom-marker-icon",
-		html: `<div style="
-			background-color: ${color};
-			width: 24px;
-			height: 24px;
-			border-radius: 50%;
-			border: 3px solid ${layerColor};
-			box-shadow: 0 2px 5px rgba(0,0,0,0.3);
-			display: flex;
-			align-items: center;
-			justify-content: center;
-		">
-			<span class="mdi ${MarkerTypeIcons[markerData.type]}" style="color: white; font-size: 14px;"></span>
-		</div>`,
-		iconSize: [24, 24],
-		iconAnchor: [12, 12],
-	});
-}
-
-function renderCustomMarkers() {
-	clearCustomMarkerLayers();
-
-	for (const markerData of currentMapMarkers.value) {
-		const layer = layers.value.find((l) => l.id === markerData.layerId);
-		if (!layer?.visible) continue;
-
-		const geom = markerData.geometry;
-		const layerColor = getLayerColor(markerData.layerId);
-		const markerColor = MarkerTypeColors[markerData.type];
-
-		if (geom.type === "point") {
-			const latlng = daocToLatLng({ X: String(geom.x), Y: String(geom.y) });
-			const markerLayer = marker(latlng, {
-				icon: createMarkerIcon(markerData),
-				draggable: !layer?.locked,
-			});
-
-			markerLayer.on("click", () => {
-				editingMarker.value = markerData;
-				showMarkerEditor.value = true;
-			});
-
-			markerLayer.on("dragend", () => {
-				const newLatLng = markerLayer.getLatLng();
-				const newCoords = latLngToDaoc(newLatLng);
-				const idx = customMarkers.value.findIndex((m) => m.id === markerData.id);
-				if (idx !== -1 && customMarkers.value[idx].geometry.type === "point") {
-					customMarkers.value[idx] = {
-						...customMarkers.value[idx],
-						geometry: {
-							type: "point",
-							x: Math.round(newCoords.X),
-							y: Math.round(newCoords.Y),
-						},
-					};
-					updateUrlHash();
-				}
-			});
-
-			let tooltipContent = `<strong>${markerData.name}</strong>`;
-			if (markerData.levelMin != null || markerData.levelMax != null) {
-				const levelText =
-					markerData.levelMin === markerData.levelMax
-						? `Level ${markerData.levelMin}`
-						: `Level ${markerData.levelMin ?? "?"}-${markerData.levelMax ?? "?"}`;
-				tooltipContent += `<br><small>${levelText}</small>`;
-			}
-			markerLayer.bindTooltip(tooltipContent);
-
-			markerLayer.addTo(leafletMap);
-			customMarkerLayers[markerData.id] = markerLayer;
-		} else if (geom.type === "path") {
-			const latlngs = geom.points.map((p) => daocToLatLng({ X: String(p.x), Y: String(p.y) }));
-			const pathLayer = polyline(latlngs, {
-				color: markerColor,
-				weight: 4,
-				opacity: 0.8,
-				dashArray: "10, 5",
-			});
-
-			pathLayer.on("click", () => {
-				editingMarker.value = markerData;
-				showMarkerEditor.value = true;
-			});
-
-			pathLayer.bindTooltip(
-				`<strong>${markerData.name}</strong><br><small>Path: ${geom.points.length} waypoints</small>`
-			);
-			pathLayer.addTo(leafletMap);
-			customMarkerLayers[markerData.id] = pathLayer;
-
-			// Add waypoint markers
-			geom.points.forEach((p, i) => {
-				const wpMarker = circleMarker(daocToLatLng({ X: String(p.x), Y: String(p.y) }), {
-					radius: 6,
-					fillColor: markerColor,
-					color: layerColor,
-					weight: 2,
-					fillOpacity: 0.8,
-				});
-				wpMarker.bindTooltip(`${markerData.name} - Waypoint ${i + 1}`);
-				wpMarker.addTo(leafletMap);
-				customMarkerLayers[`${markerData.id}-wp-${i}`] = wpMarker;
-			});
-		} else if (geom.type === "polygon") {
-			const latlngs = geom.points.map((p) => daocToLatLng({ X: String(p.x), Y: String(p.y) }));
-			const polygonLayer = leafletPolygon(latlngs, {
-				color: layerColor,
-				fillColor: markerColor,
-				fillOpacity: 0.2,
-				weight: 2,
-			});
-
-			polygonLayer.on("click", () => {
-				editingMarker.value = markerData;
-				showMarkerEditor.value = true;
-			});
-
-			polygonLayer.bindTooltip(
-				`<strong>${markerData.name}</strong><br><small>Area: ${geom.points.length} vertices</small>`
-			);
-			polygonLayer.addTo(leafletMap);
-			customMarkerLayers[markerData.id] = polygonLayer;
-		}
-	}
-}
-
-function updateTempGeometry() {
-	clearTempLayers();
-
-	if (tempGeometryPoints.value.length < 2) return;
-
-	const latlngs = tempGeometryPoints.value.map((p) => daocToLatLng({ X: String(p.x), Y: String(p.y) }));
-
-	if (
-		addMarkerMode.value === "path" ||
-		(showGeometryEditor.value && editingGeometryMarker.value?.geometry.type === "path")
-	) {
-		tempPolylineLayer = polyline(latlngs, {
-			color: "#FF9800",
-			weight: 3,
-			dashArray: "5, 10",
-			opacity: 0.8,
-		});
-		tempPolylineLayer.addTo(leafletMap);
-	} else if (
-		addMarkerMode.value === "polygon" ||
-		(showGeometryEditor.value && editingGeometryMarker.value?.geometry.type === "polygon")
-	) {
-		tempPolygonLayer = leafletPolygon(latlngs, {
-			color: "#FF9800",
-			fillColor: "#FF9800",
-			fillOpacity: 0.1,
-			weight: 2,
-			dashArray: "5, 10",
-		});
-		tempPolygonLayer.addTo(leafletMap);
-	}
-}
+// Format last saved time
+const lastSavedText = computed(() => {
+	if (!lastSaved.value) return "Never";
+	const now = new Date();
+	const diff = now.getTime() - lastSaved.value.getTime();
+	if (diff < 60000) return "Just now";
+	if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
+	return lastSaved.value.toLocaleTimeString();
+});
 
 function handleMapClick(latlng: LatLng) {
 	const coords = latLngToDaoc(latlng);
@@ -313,7 +115,6 @@ function handleMapClick(latlng: LatLng) {
 	// If editing geometry (path or polygon), add point
 	if (showGeometryEditor.value) {
 		tempGeometryPoints.value = [...tempGeometryPoints.value, point];
-		updateTempGeometry();
 		return;
 	}
 
@@ -332,18 +133,19 @@ function handleMapClick(latlng: LatLng) {
 		addMarkerMode.value = null;
 	} else if (addMarkerMode.value === "path" || addMarkerMode.value === "polygon") {
 		tempGeometryPoints.value = [...tempGeometryPoints.value, point];
-		updateTempGeometry();
 
 		// Add visual feedback for the point
-		const tempMarker = circleMarker(latlng, {
-			radius: 6,
-			fillColor: "#FF9800",
-			color: "#fff",
-			weight: 2,
-			fillOpacity: 0.8,
-		});
-		tempMarker.addTo(leafletMap);
-		customMarkerLayers[`temp-${tempGeometryPoints.value.length}`] = tempMarker;
+		if (leafletMap.value) {
+			const tempMarker = circleMarker(latlng, {
+				radius: 6,
+				fillColor: "#FF9800",
+				color: "#fff",
+				weight: 2,
+				fillOpacity: 0.8,
+			});
+			tempMarker.addTo(leafletMap.value);
+			customMarkerLayers[`temp-${tempGeometryPoints.value.length}`] = tempMarker;
+		}
 	}
 }
 
@@ -376,7 +178,6 @@ function finishGeometryCreation() {
 function cancelAddMode() {
 	addMarkerMode.value = null;
 	tempGeometryPoints.value = [];
-	clearTempLayers();
 	// Remove temp point markers
 	Object.keys(customMarkerLayers)
 		.filter((k) => k.startsWith("temp-"))
@@ -384,62 +185,6 @@ function cancelAddMode() {
 			customMarkerLayers[k].remove();
 			delete customMarkerLayers[k];
 		});
-}
-
-function handleSaveMarker(markerData: MapMarker) {
-	const idx = customMarkers.value.findIndex((m) => m.id === markerData.id);
-	if (idx !== -1) {
-		customMarkers.value[idx] = markerData;
-	} else {
-		customMarkers.value.push(markerData);
-	}
-	renderCustomMarkers();
-	updateUrlHash();
-}
-
-function handleDeleteMarker(markerId: string) {
-	customMarkers.value = customMarkers.value.filter((m) => m.id !== markerId);
-	renderCustomMarkers();
-	updateUrlHash();
-}
-
-function handleEditGeometry(markerData: MapMarker) {
-	editingGeometryMarker.value = markerData;
-	if (markerData.geometry.type === "path" || markerData.geometry.type === "polygon") {
-		tempGeometryPoints.value = [...markerData.geometry.points];
-	}
-	showGeometryEditor.value = true;
-	updateTempGeometry();
-}
-
-function handleGeometryUpdate(points: { x: number; y: number }[]) {
-	tempGeometryPoints.value = points;
-	updateTempGeometry();
-}
-
-function handleGeometryClose() {
-	if (editingGeometryMarker.value && tempGeometryPoints.value.length >= 2) {
-		const idx = customMarkers.value.findIndex((m) => m.id === editingGeometryMarker.value!.id);
-		if (idx !== -1) {
-			const geomType = customMarkers.value[idx].geometry.type;
-			if (geomType === "path" || geomType === "polygon") {
-				customMarkers.value[idx] = {
-					...customMarkers.value[idx],
-					geometry: {
-						type: geomType,
-						points: [...tempGeometryPoints.value],
-					},
-				};
-			}
-		}
-	}
-
-	showGeometryEditor.value = false;
-	editingGeometryMarker.value = null;
-	tempGeometryPoints.value = [];
-	clearTempLayers();
-	renderCustomMarkers();
-	updateUrlHash();
 }
 
 function toggleAddMarkerMode(mode: "point" | "path" | "polygon") {
@@ -451,15 +196,42 @@ function toggleAddMarkerMode(mode: "point" | "path" | "polygon") {
 	}
 }
 
+function handleSaveMarker(markerData: MapMarker) {
+	updateMarker(markerData);
+	doRenderMarkers();
+}
+
+function handleDeleteMarker(markerId: string) {
+	deleteMarker(markerId);
+	doRenderMarkers();
+}
+
+function handleEditGeometry(markerData: MapMarker) {
+	editingGeometryMarker.value = markerData;
+	if (markerData.geometry.type === "path" || markerData.geometry.type === "polygon") {
+		tempGeometryPoints.value = [...markerData.geometry.points];
+	}
+	showGeometryEditor.value = true;
+}
+
+function handleGeometryUpdate(points: { x: number; y: number }[]) {
+	tempGeometryPoints.value = points;
+}
+
+function handleGeometryClose() {
+	if (editingGeometryMarker.value && tempGeometryPoints.value.length >= 2) {
+		updateMarkerGeometry(editingGeometryMarker.value.id, tempGeometryPoints.value);
+	}
+
+	showGeometryEditor.value = false;
+	editingGeometryMarker.value = null;
+	tempGeometryPoints.value = [];
+	doRenderMarkers();
+}
+
+// File operations
 function saveMarkersToFile() {
-	const json = exportMarkersToJson(customMarkers.value, layers.value);
-	const blob = new Blob([json], { type: "application/json" });
-	const url = URL.createObjectURL(blob);
-	const a = document.createElement("a");
-	a.href = url;
-	a.download = `daoc-markers-${new Date().toISOString().split("T")[0]}.json`;
-	a.click();
-	URL.revokeObjectURL(url);
+	exportToFile();
 }
 
 function loadMarkersFromFile() {
@@ -486,181 +258,60 @@ function handleFileUpload(event: Event) {
 	input.value = "";
 }
 
-const pendingImportJson = ref<string>("");
-
 function confirmImport() {
-	try {
-		const { markers: loadedMarkers, layers: loadedLayers } = importMarkersFromJson(pendingImportJson.value);
+	const result = importFromJson(pendingImportJson.value, {
+		toNewLayer: importToNewLayer.value,
+		newLayerName: importNewLayerName.value,
+	});
 
-		if (importToNewLayer.value) {
-			// Create a new layer and reassign all markers to it
-			const newLayer = createLayer(importNewLayerName.value);
-			layers.value = [...layers.value, newLayer];
-
-			// Map old layer IDs to the new layer
-			const reassignedMarkers = loadedMarkers.map((m) => ({
-				...m,
-				id: crypto.randomUUID(), // Generate new IDs to avoid conflicts
-				layerId: newLayer.id,
-			}));
-
-			customMarkers.value = [...customMarkers.value, ...reassignedMarkers];
-		} else {
-			// Merge layers (add missing ones)
-			for (const layer of loadedLayers) {
-				if (!layers.value.find((l) => l.id === layer.id)) {
-					layers.value = [...layers.value, layer];
-				}
-			}
-
-			// Add markers with new IDs
-			const reassignedMarkers = loadedMarkers.map((m) => ({
-				...m,
-				id: crypto.randomUUID(),
-			}));
-
-			customMarkers.value = [...customMarkers.value, ...reassignedMarkers];
-		}
-
+	if (result.success) {
 		showImportDialog.value = false;
 		pendingImportJson.value = "";
-		renderCustomMarkers();
-		updateUrlHash();
-	} catch (err) {
-		console.error("Failed to import markers:", err);
+		doRenderMarkers();
+	} else {
 		alert("Failed to import markers. Make sure it is a valid JSON file.");
 	}
 }
 
-// URL hash handling
-function updateUrlHash() {
-	if (customMarkers.value.length === 0 && layers.value.length === 1) {
-		history.replaceState(null, "", window.location.pathname);
-		return;
-	}
-
-	const encoded = compressForUrl(customMarkers.value, layers.value);
-	history.replaceState(null, "", `#${encoded}`);
-}
-
-function loadFromUrlHash() {
-	const hash = window.location.hash.slice(1);
-	if (!hash) return;
-
-	try {
-		const { markers: loadedMarkers, layers: loadedLayers } = decompressFromUrl(hash);
-		customMarkers.value = loadedMarkers;
-		layers.value = loadedLayers.length > 0 ? loadedLayers : [createDefaultLayer()];
-	} catch (err) {
-		console.error("Failed to load from URL:", err);
-	}
-}
-
-function copyShareableLink() {
-	updateUrlHash();
-	navigator.clipboard.writeText(window.location.href).then(() => {
+async function handleCopyShareableLink() {
+	const success = await copyShareableLink();
+	if (success) {
 		alert("Link copied to clipboard!");
+	}
+}
+
+function handleClearStorage() {
+	if (confirm("Are you sure you want to clear all saved markers from local storage? This cannot be undone.")) {
+		clearLocalStorage();
+		customMarkers.value = [];
+		layers.value = [createDefaultLayer()];
+		doRenderMarkers();
+	}
+}
+
+// Render markers helper
+function doRenderMarkers() {
+	renderCustomMarkers(currentMapMarkers.value, layers.value, {
+		onMarkerClick: (marker) => {
+			editingMarker.value = marker;
+			showMarkerEditor.value = true;
+		},
+		onMarkerDragEnd: (marker, newLatLng) => {
+			const newCoords = latLngToDaoc(newLatLng);
+			updateMarkerPosition(marker.id, newCoords.X, newCoords.Y);
+		},
 	});
 }
 
+// Initialize map
 async function initMap() {
-	if (!refMap.value) return;
-
-	loading.value = true;
-	if (leafletMap) {
-		leafletMap.off();
-		leafletMap.remove();
-		await new Promise((r) => setTimeout(r, 50));
-	}
-
-	const current = DaocMiniMaps.find((r) => r.id === mapId.value);
-	if (!current) {
-		loading.value = false;
-		console.error("map not found", mapId.value);
-		return;
-	}
-
-	leafletMap = LeafletMap(refMap.value, {
-		crs: CRS.Simple,
-		minZoom: 3,
-		maxZoom: 13,
-		preferCanvas: true,
+	await initLeafletMap(mapId.value, {
+		onClick: handleMapClick,
 	});
-
-	const map = DaocMaps[current.id];
-	let mapBounds: LatLngBoundsLiteral = [
-		[1000, 10000],
-		[-1000, -1000],
-	];
-	const tiles: DaocMapInfo["tiles"] = [];
-	for (const zone of current.zones) {
-		let bounds: LatLngBoundsLiteral = [
-			[-(zone.offsetY + zone.height) / 8192, zone.offsetX / 8192],
-			[-(zone.offsetY / 8192), (zone.offsetX + zone.width) / 8192],
-		];
-		const tile = map.tiles.find((t) => t.src === zone.src);
-		if (tile) tiles.push(tile);
-
-		if (bounds[0].every((i) => i === 0) && bounds[1].every((i) => i === 0)) {
-			bounds = tile?.bounds ?? bounds;
-		} else {
-			const add = tile?.bounds ?? [
-				[0, 0],
-				[0, 0],
-			];
-			// add zone offsets
-			bounds[0][0] += add[1][0];
-			bounds[0][1] += add[0][1];
-			bounds[1][0] += add[1][0];
-			bounds[1][1] += add[0][1];
-		}
-		imageOverlay(zone.src, bounds).addTo(leafletMap);
-		mapBounds = [
-			[Math.min(bounds[0][0], mapBounds[0][0]), Math.min(bounds[0][1], mapBounds[0][1])],
-			[Math.max(bounds[1][0], mapBounds[1][0]), Math.max(bounds[1][1], mapBounds[1][1])],
-		];
-	}
-	leafletMap.fitBounds(mapBounds);
-
-	leafletMap.on("mousemove", (ev) => {
-		const { X, Y } = latLngToDaoc(ev.latlng);
-		let [lx, ly] = [X / 8192, Y / 8192];
-		const zone = current.zones.find(
-			(z) => z.offsetX <= lx && lx < z.offsetX + (z.width || 8) && z.offsetY <= ly && ly < z.offsetY + (z.height || 8)
-		);
-		if (zone) [lx, ly] = [X - zone.offsetX, Y - zone.offsetY];
-		const tile = tiles.find((t) => new LatLngBounds(t.bounds).contains(ev.latlng));
-		if (tile)
-			[lx, ly] = [X - latLngToDaoc(new LatLng(...tile.bounds[0])).X, Y - latLngToDaoc(new LatLng(...tile.bounds[1])).Y];
-		const zoneId = (zone?.src ?? tile?.src ?? "maps/.jpg").substring(6).substring(0, 3);
-		const loc = zone || tile ? `loc=${lx},${ly}, z:${zoneId}` : "";
-		debugPos.value = `gloc (x:${X}, y:${Y}) ${loc}`;
-	});
-
-	// Click to add marker when in add mode
-	leafletMap.on("click", (ev) => {
-		handleMapClick(ev.latlng);
-	});
-
-	// Render existing custom markers
-	renderCustomMarkers();
-
-	loading.value = false;
+	doRenderMarkers();
 }
 
-onMounted(async () => {
-	loadFromUrlHash();
-	await initMap();
-	document.addEventListener("keydown", handleKeydown);
-	window.addEventListener("hashchange", loadFromUrlHash);
-});
-onUnmounted(() => {
-	clearMarkers();
-	clearCustomMarkerLayers();
-	document.removeEventListener("keydown", handleKeydown);
-	window.removeEventListener("hashchange", loadFromUrlHash);
-});
-
+// Keyboard handler
 function handleKeydown(e: KeyboardEvent) {
 	if (e.key === "Escape") {
 		if (addMarkerMode.value) {
@@ -676,35 +327,43 @@ function handleKeydown(e: KeyboardEvent) {
 	}
 }
 
+// Lifecycle
+onMounted(async () => {
+	// Initialize storage: load from URL hash first, then localStorage
+	initializeStorage();
+	
+	// Setup auto-save
+	const cleanupAutoSave = setupAutoSave();
+	
+	await initMap();
+	
+	document.addEventListener("keydown", handleKeydown);
+});
+
+onUnmounted(() => {
+	cleanupLeafletMap();
+	document.removeEventListener("keydown", handleKeydown);
+});
+
+// Watchers
 watch(mapId, () => {
 	initMap();
 });
-watch(currentMapMarkers, renderCustomMarkers, { deep: true });
+
+watch(currentMapMarkers, doRenderMarkers, { deep: true });
+
 watch(
 	layers,
 	() => {
-		renderCustomMarkers();
-		updateUrlHash();
+		doRenderMarkers();
 	},
 	{ deep: true }
 );
+
 watch(
 	() => props.defaultSearch,
 	() => (search.value = props.defaultSearch != null ? props.defaultSearch : search.value)
 );
-
-function daocToLatLng(npc: { X: string; Y: string }) {
-	return latLng({
-		lat: -parseInt(npc.Y) / 8192,
-		lng: parseInt(npc.X) / 8192,
-	});
-}
-function latLngToDaoc(coord: LatLng) {
-	return {
-		X: coord.lng * 8192,
-		Y: coord.lat * -8192,
-	};
-}
 </script>
 
 <template>
@@ -779,10 +438,55 @@ function latLngToDaoc(coord: LatLng) {
 					icon="mdi-share-variant"
 					size="small"
 					variant="text"
-					@click="copyShareableLink"
+					@click="handleCopyShareableLink"
 					title="Copy shareable link"
 					:disabled="customMarkers.length === 0"
 				/>
+
+				<v-divider vertical class="mx-2" />
+
+				<!-- Storage status with menu -->
+				<v-menu>
+					<template #activator="{ props: menuProps }">
+						<v-tooltip location="bottom">
+							<template #activator="{ props: tooltipProps }">
+								<v-chip 
+									v-bind="{ ...menuProps, ...tooltipProps }" 
+									size="small" 
+									:color="autoSaveEnabled ? 'success' : 'warning'" 
+									variant="tonal"
+									style="cursor: pointer"
+								>
+									<v-icon start size="small" :icon="autoSaveEnabled ? 'mdi-cloud-check' : 'mdi-cloud-off'" />
+									{{ lastSavedText }}
+									<v-icon end size="small" icon="mdi-chevron-down" />
+								</v-chip>
+							</template>
+							<span>Auto-save {{ autoSaveEnabled ? 'enabled' : 'disabled' }}. Click for options.</span>
+						</v-tooltip>
+					</template>
+					<v-list density="compact">
+						<v-list-item @click="autoSaveEnabled = !autoSaveEnabled">
+							<template #prepend>
+								<v-icon :icon="autoSaveEnabled ? 'mdi-toggle-switch' : 'mdi-toggle-switch-off'" />
+							</template>
+							<v-list-item-title>{{ autoSaveEnabled ? 'Disable' : 'Enable' }} Auto-save</v-list-item-title>
+						</v-list-item>
+						<v-list-item @click="saveToLocalStorage">
+							<template #prepend>
+								<v-icon icon="mdi-content-save" />
+							</template>
+							<v-list-item-title>Save Now</v-list-item-title>
+						</v-list-item>
+						<v-divider />
+						<v-list-item @click="handleClearStorage" class="text-error">
+							<template #prepend>
+								<v-icon icon="mdi-delete" color="error" />
+							</template>
+							<v-list-item-title>Clear Local Storage</v-list-item-title>
+						</v-list-item>
+					</v-list>
+				</v-menu>
 
 				<v-chip v-if="currentMapMarkers.length > 0" size="small" color="primary">
 					{{ currentMapMarkers.length }} markers
@@ -834,12 +538,6 @@ function latLngToDaoc(coord: LatLng) {
 				<div>{{ debugPos }}</div>
 			</v-col>
 		</v-row>
-
-		<div style="display: none">
-			<div ref="refPopup" style="min-width: 187px">
-				<template v-if="!selected">Nothing selected</template>
-			</div>
-		</div>
 
 		<!-- Marker Editor Dialog -->
 		<MarkerEditor
