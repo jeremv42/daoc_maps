@@ -1,13 +1,12 @@
 <script lang="ts" setup>
-import { LatLng, circleMarker, Map } from "leaflet";
+import { LatLng, circleMarker } from "leaflet";
 import "leaflet/dist/leaflet.css";
-import { computed, onMounted, onUnmounted, ref, shallowRef, watch } from "vue";
-import { DaocMapInfo, DaocMaps, DaocMiniMaps } from "@/models/DaocMaps";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
+import { DaocMapInfo, DaocMaps } from "@/models/DaocMaps";
 import {
 	MapMarker,
 	createMarker,
 	createDefaultLayer,
-	DEFAULT_LAYER_ID,
 	MarkerType,
 } from "@/models/MapMarker";
 import MarkerEditor from "@/components/MarkerEditor.vue";
@@ -36,23 +35,17 @@ const {
 	markers: customMarkers,
 	layers,
 	selectedLayerId,
-	currentLayer,
 	updateMarker,
 	deleteMarker,
 	updateMarkerPosition,
 	updateMarkerGeometry,
-	getLayerColor,
-	isLayerLocked,
 } = useMapMarkers();
 
 const {
 	lastSaved,
 	autoSaveEnabled,
-	loadFromLocalStorage,
 	saveToLocalStorage,
 	clearLocalStorage,
-	loadFromUrlHash,
-	updateUrlHash,
 	copyShareableLink,
 	exportToFile,
 	importFromJson,
@@ -65,10 +58,7 @@ const {
 	loading,
 	debugPos,
 	customMarkerLayers,
-	daocToLatLng,
 	latLngToDaoc,
-	clearMarkers,
-	clearCustomMarkerLayers,
 	renderCustomMarkers,
 	initMap: initLeafletMap,
 	cleanup: cleanupLeafletMap,
@@ -646,83 +636,5 @@ watch(
 
 .map-view.add-marker-cursor {
 	cursor: crosshair;
-}
-
-.players-panel {
-	position: absolute;
-	top: 10px;
-	right: 10px;
-	z-index: 1000;
-	background: rgba(0, 0, 0, 0.8);
-	border-radius: 4px;
-	min-width: 140px;
-	max-width: 180px;
-	font-size: 0.8em;
-	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-}
-
-.players-header {
-	display: flex;
-	align-items: center;
-	gap: 4px;
-	padding: 4px 8px;
-	cursor: pointer;
-	user-select: none;
-	color: #fff;
-	font-weight: 500;
-}
-
-.players-header:hover {
-	background: rgba(255, 255, 255, 0.1);
-}
-
-.players-list {
-	max-height: 150px;
-	overflow-y: auto;
-}
-
-.player-item {
-	display: flex;
-	align-items: center;
-	gap: 6px;
-	padding: 3px 8px;
-	cursor: pointer;
-	color: #eee;
-	border-left: 2px solid transparent;
-}
-
-.player-item:hover {
-	background: rgba(255, 255, 255, 0.1);
-}
-
-.player-item.selected {
-	background: rgba(238, 238, 17, 0.2);
-	border-left-color: #eeee11;
-}
-
-.player-name {
-	flex: 1;
-	white-space: nowrap;
-	overflow: hidden;
-	text-overflow: ellipsis;
-}
-
-.player-level {
-	color: #aaa;
-	font-size: 0.85em;
-}
-
-.player-bars {
-	width: 30px;
-	height: 4px;
-	background: #333;
-	border-radius: 2px;
-	overflow: hidden;
-}
-
-.health-bar {
-	height: 100%;
-	background: #ee2222;
-	transition: width 0.3s;
 }
 </style>
